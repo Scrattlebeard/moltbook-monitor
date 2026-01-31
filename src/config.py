@@ -28,10 +28,12 @@ class Config:
 
     def validate(self) -> None:
         """Validate required configuration values."""
-        if not self.api_key:
-            raise ValueError("MOLTBOOK_API_KEY environment variable is required")
+        # API key is optional - /posts endpoint works without auth
         if not self.base_url.startswith("https://"):
             raise ValueError("Base URL must use HTTPS")
+        # Ensure we use www.moltbook.com (without www strips Authorization headers)
+        if "moltbook.com" in self.base_url and "www.moltbook.com" not in self.base_url:
+            raise ValueError("Must use www.moltbook.com (without www strips auth headers)")
 
 
 def load_config() -> Config:

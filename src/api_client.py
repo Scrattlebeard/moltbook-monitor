@@ -24,14 +24,16 @@ class MoltbookClient:
 
     def __init__(self, config: Config):
         self.config = config
+        headers = {"Content-Type": "application/json"}
+        # Only add auth header if API key is provided
+        if config.api_key:
+            headers["Authorization"] = f"Bearer {config.api_key}"
         self._client = httpx.Client(
             base_url=config.base_url,
-            headers={
-                "Authorization": f"Bearer {config.api_key}",
-                "Content-Type": "application/json",
-            },
+            headers=headers,
             timeout=30.0,
         )
+        self._authenticated = bool(config.api_key)
 
     def __enter__(self):
         return self

@@ -95,8 +95,13 @@ def main() -> int:
         config = load_config()
     except ValueError as e:
         print(f"Configuration error: {e}", file=sys.stderr)
-        print("Please set the MOLTBOOK_API_KEY environment variable.", file=sys.stderr)
         return 1
+
+    # Note: API key is optional for /posts endpoint, but required for /feed
+    if not config.api_key:
+        logging.getLogger(__name__).warning(
+            "No MOLTBOOK_API_KEY set - using public /posts endpoint only"
+        )
 
     # Setup logging
     log_level = args.log_level or config.log_level
