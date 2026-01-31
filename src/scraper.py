@@ -14,6 +14,8 @@ from .models import FilterMatch, Post
 
 logger = logging.getLogger(__name__)
 
+STATS_FILE = Path("scraper_stats.json")
+
 
 class PostScraper:
     """
@@ -33,6 +35,42 @@ class PostScraper:
         self.client = MoltbookClient(config)
         self._seen_post_ids: set[str] = set()
         self._flagged_posts: list[dict] = []
+        self._stats = self._load_stats()
+
+    def _load_stats(self) -> dict:
+        """Load persistent stats from file."""
+        if STATS_FILE.exists():
+            try:
+                data = json.loads(STATS_FILE.read_text())
+                logger.info(f"Loaded stats from {STATS_FILE}")
+                return data
+            except (json.JSONDecodeError, IOError) as e:
+                logger.warning(f"Failed to load stats: {e}")
+        return {
+            "total_seen": 0,
+            "total_flagged": 0,
+            "by_filter": {},
+            "last_updated": None,
+        }
+
+    def _save_stats(self) -> None:
+        """Save stats to persistent file."""
+        self._stats["last_updated"] = datetime.utcnow().isoformat()
+        STATS_FILE.write_text(json.dumps(self._stats, indent=2))
+        logger.debug(f"Saved stats to {STATS_FILE}")
+
+    def _update_stats(self, matches: list[FilterMatch], new_posts_count: int) -> None:
+        """Update running tally for filters."""
+        self._stats["total_seen"] += new_posts_count
+
+        for match in matches:
+            filter_name = match.filter_name
+            if filter_name not in self._stats["by_filter"]:
+                self._stats["by_filter"][filter_name] = {"flagged": 0}
+            self._stats["by_filter"][filter_name]["flagged"] += 1
+            self._stats["total_flagged"] += 1
+
+        self._save_stats()
 
     def __enter__(self):
         return self
@@ -51,6 +89,7 @@ class PostScraper:
             List of FilterMatch objects for posts that triggered filters
         """
         all_matches = []
+        new_posts_count = 0
 
         for post in posts:
             # Skip already processed posts
@@ -58,6 +97,7 @@ class PostScraper:
                 continue
 
             self._seen_post_ids.add(post.id)
+            new_posts_count += 1
             matches = self.registry.run_all(post)
 
             if matches:
@@ -66,6 +106,10 @@ class PostScraper:
                     f"{[m.filter_name for m in matches]}"
                 )
                 all_matches.extend(matches)
+
+        # Update persistent stats
+        if new_posts_count > 0:
+            self._update_stats(all_matches, new_posts_count)
 
         return all_matches
 
@@ -175,26 +219,35 @@ class PostScraper:
                 flagged = self.run_once(sort=sort, submolt=submolt)
                 total_flagged += flagged
 
-                logger.info(
-                    f"Cycle {cycles} complete. "
-                    f"Total flagged: {total_flagged}. "
-                    f"Seen posts: {len(self._seen_post_ids)}"
-                )
+                self._log_stats(cycles)
 
                 time.sleep(self.config.scrape_interval_seconds)
 
         except KeyboardInterrupt:
             logger.info("Scraper stopped by user")
-            logger.info(
-                f"Final stats: {cycles} cycles, "
-                f"{total_flagged} flagged, "
-                f"{len(self._seen_post_ids)} unique posts seen"
-            )
+            self._log_stats(cycles)
+            logger.info(f"Stats persisted to {STATS_FILE}")
+
+    def _log_stats(self, cycle: int) -> None:
+        """Log current stats including per-filter tallies."""
+        stats = self._stats
+        filter_summary = ", ".join(
+            f"{name}: {data['flagged']}"
+            for name, data in stats.get("by_filter", {}).items()
+        ) or "none"
+
+        logger.info(
+            f"Cycle {cycle} | "
+            f"Total seen: {stats['total_seen']} | "
+            f"Total flagged: {stats['total_flagged']} | "
+            f"By filter: [{filter_summary}]"
+        )
 
     def get_stats(self) -> dict:
-        """Get current scraper statistics."""
+        """Get current scraper statistics including persistent tallies."""
         return {
-            "seen_posts": len(self._seen_post_ids),
-            "flagged_posts": len(self._flagged_posts),
+            "session_seen_posts": len(self._seen_post_ids),
+            "session_flagged_posts": len(self._flagged_posts),
             "enabled_filters": self.registry.list_filters(),
+            "persistent": self._stats,
         }
