@@ -1,9 +1,12 @@
 """Base filter class and registry for extensible post filtering."""
 
+import logging
 from abc import ABC, abstractmethod
 from typing import Optional
 
 from ..models import FilterMatch, Post
+
+logger = logging.getLogger(__name__)
 
 
 class BaseFilter(ABC):
@@ -48,10 +51,8 @@ class BaseFilter(ABC):
 
     def get_searchable_text(self, post: Post) -> str:
         """Get combined searchable text from a post."""
-        parts = [post.title, post.content]
-        if post.url:
-            parts.append(post.url)
-        return "\n".join(parts)
+        parts = [post.title, post.content, post.url]
+        return "\n".join(p for p in parts if p)
 
 
 class FilterRegistry:
@@ -102,9 +103,14 @@ class FilterRegistry:
         for filter_instance in self._filters.values():
             if not filter_instance.enabled:
                 continue
-            match = filter_instance.analyze(post)
-            if match:
-                matches.append(match)
+            try:
+                match = filter_instance.analyze(post)
+                if match:
+                    matches.append(match)
+            except Exception as e:
+                logger.error(
+                    f"Filter '{filter_instance.name}' failed on post '{post.id}': {e}"
+                )
         return matches
 
     def run_filter(self, filter_name: str, post: Post) -> Optional[FilterMatch]:

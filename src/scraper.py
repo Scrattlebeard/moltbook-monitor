@@ -216,8 +216,12 @@ class PostScraper:
         try:
             while True:
                 cycles += 1
-                flagged = self.run_once(sort=sort, submolt=submolt)
-                total_flagged += flagged
+                try:
+                    flagged = self.run_once(sort=sort, submolt=submolt)
+                    total_flagged += flagged
+                except Exception as e:
+                    logger.error(f"Error in scrape cycle {cycles}: {e}", exc_info=True)
+                    flagged = 0
 
                 self._log_stats(cycles)
 
