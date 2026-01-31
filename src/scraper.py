@@ -96,17 +96,36 @@ class PostScraper:
             return []
 
     def save_flagged_posts(self, matches: list[FilterMatch]) -> None:
-        """Save flagged posts to the output file."""
+        """Save flagged posts to the output file and download full content."""
         if not matches or not self.config.output_file:
             return
 
+        # Create flagged_posts directory for full post downloads
+        flagged_dir = Path("flagged_posts")
+        flagged_dir.mkdir(exist_ok=True)
+
         for match in matches:
-            self._flagged_posts.append(
-                {
-                    **match.to_dict(),
-                    "flagged_at": datetime.utcnow().isoformat(),
-                }
-            )
+            flagged_data = {
+                **match.to_dict(),
+                "flagged_at": datetime.utcnow().isoformat(),
+                "full_content": {
+                    "title": match.post.title,
+                    "content": match.post.content,
+                    "author": match.post.author.name,
+                    "submolt": match.post.submolt.name,
+                    "submolt_display": match.post.submolt.display_name,
+                    "upvotes": match.post.upvotes,
+                    "downvotes": match.post.downvotes,
+                    "created_at": match.post.created_at.isoformat(),
+                    "url": match.post.url,
+                },
+            }
+            self._flagged_posts.append(flagged_data)
+
+            # Save individual post file
+            post_file = flagged_dir / f"{match.post.id}.json"
+            post_file.write_text(json.dumps(flagged_data, indent=2, default=str))
+            logger.info(f"Saved flagged post to {post_file}")
 
         output_path = Path(self.config.output_file)
         output_path.write_text(
