@@ -60,7 +60,7 @@ class PromptInjectionFilter(BaseFilter):
         ),
         (
             "roleplay_exploit",
-            r"(?:jailbreak|DAN|do anything now|STAN|DUDE|AIM|evil mode|developer mode|god mode)",
+            r"\b(?:jailbreak|DAN|do anything now|STAN|DUDE|AIM|evil mode|developer mode|god mode)\b",
             "critical",
             "Known jailbreak attempt patterns",
         ),
